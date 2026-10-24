@@ -5,6 +5,13 @@ An [Omarchy](https://omarchy.org/) bar widget that shows the current temperature
 API, with a popout for current conditions, the sensor's battery, and the hourly and 5-day
 forecast.
 
+![The detail panel open over the bar, with demo data](preview.png)
+
+It shows a station you own, from your own Tempest account. What it adds over a plain weather
+pill: a gauge for the sensor's battery with a low-battery warning, a dimmed reading and an
+"offline since" time when the station stops reporting, and a setup form that lists your
+account's stations so there's no ID to look up.
+
 - **Bar:** the station's temperature (or feels-like), in bold. If the station stops reporting
   for more than 15 minutes (a flat battery, a lost link to the hub), the reading dims and keeps
   showing the last report until the station is back.
