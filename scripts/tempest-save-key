@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Saves the Tempest access token from $TEMPEST_NEW_TOKEN to the key file,
+# readable only by you. The token comes through the environment rather than
+# argv so it never shows up in the process list. An empty token deletes the file.
+
+key_file="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/tempest.key"
+key=$(tr -d '[:space:]' <<<"${TEMPEST_NEW_TOKEN:-}")
+
+if [[ -z $key ]]; then
+  rm -f "$key_file"
+  exit 0
+fi
+
+mkdir -p "$(dirname "$key_file")"
+(umask 077 && printf '%s\n' "$key" >"$key_file.tmp") && mv "$key_file.tmp" "$key_file"

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Prints the stations the access token can see, for the setup form's station
+# picker, as one JSON line: {ok, stations: [{id, name, sharesWithWu, ...}]}.
+# Usage: tempest-stations
+# The token is read from ~/.config/omarchy/tempest.key (or $TEMPEST_TOKEN).
+
+# shellcheck source=scripts/lib.sh
+source "$(dirname "$0")/lib.sh"
+
+load_key
+
+request "stations"
+check_status no-station "No stations found for this token"
+
+jq -ce '{
+  ok: true,
+  stations: [.stations // [] | .[] | {
+    id: (.station_id | tostring),
+    name: (.public_name // .name),
+    stationName: .name,
+    lat: .latitude,
+    lon: .longitude,
+    timezone: .timezone,
+    sensorDeviceId: (first(.devices[]? | select(.device_type == "ST") | .device_id | tostring) // null),
+    sharesWithWu: .station_meta.share_with_wu
+  }]
+}' <<<"$body" 2>/dev/null || fail http "Unexpected stations response"

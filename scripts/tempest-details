@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Prints today's summary with the hourly and daily forecast for a Tempest
+# station as one JSON line.
+# Usage: tempest-details <stationId> <e|m|h> [hours]
+# The token is read from ~/.config/omarchy/tempest.key (or $TEMPEST_TOKEN).
+
+# shellcheck source=scripts/lib.sh
+source "$(dirname "$0")/lib.sh"
+
+station=$(station_id "$1")
+units="${2:-e}"
+hours="${3:-12}"
+[[ $hours =~ ^[0-9]+$ ]] || hours=12
+
+[[ -n $station ]] || fail no-station "No station selected"
+load_key
+
+request "better_forecast?station_id=${station}&$(units_query "$units")"
+check_status no-data "No forecast for station $station"
+
+tz=$(jq -r '.timezone // "UTC"' <<<"$body" 2>/dev/null) || fail http "Unexpected forecast response"
+
+# The $ names are jq variables, not shell ones.
+# shellcheck disable=SC2016
+TZ=$tz jq -ce --argjson hours "$hours" '
+  def clock: if . == null then null else strflocaltime("%-I:%M %p") end;
+  (.forecast.daily // []) as $daily
+  | (.current_conditions // {}) as $c
+  | if (.forecast | type) != "object" then error("no forecast") else . end
+  | {
+      ok: true,
+      conditions: $c.conditions,
+      icon: $c.icon,
+      today: {
+        high: $daily[0].air_temp_high,
+        low: $daily[0].air_temp_low,
+        precipTotal: $c.precip_accum_local_day,
+        gustHigh: null,
+        pressureTrend: $c.pressure_trend
+      },
+      sunrise: ($daily[0].sunrise | clock),
+      sunset: ($daily[0].sunset | clock),
+      hourly: [.forecast.hourly // [] | .[:$hours][] | {
+        name: (.time | strflocaltime("%-I %p")),
+        temp: .air_temperature,
+        feels: .feels_like,
+        phrase: .conditions,
+        icon: .icon,
+        precipChance: .precip_probability,
+        windSpeed: .wind_avg,
+        windGust: .wind_gust,
+        winddir: .wind_direction
+      }],
+      days: [range(0; $daily | length) as $i | $daily[$i] | {
+        name: (if $i == 0 then "Today" else .day_start_local | strflocaltime("%a") end),
+        high: .air_temp_high,
+        low: .air_temp_low,
+        phrase: .conditions,
+        icon: .icon,
+        precipChance: .precip_probability,
+        precipType: .precip_type,
+        narrative: null
+      }]
+    }' <<<"$body" 2>/dev/null || fail http "Unexpected forecast response"

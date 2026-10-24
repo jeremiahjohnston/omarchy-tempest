@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Prints the latest observation from a Tempest station as one JSON line.
+# Usage: tempest-current <stationId> <e|m|h> [sensorDeviceId]
+# The sensor's device ID (the ST device) adds its battery voltage; without it
+# the script looks the sensor up from the station.
+# The token is read from ~/.config/omarchy/tempest.key (or $TEMPEST_TOKEN).
+# $TEMPEST_NOW overrides the current time (epoch seconds) for the tests.
+
+# shellcheck source=scripts/lib.sh
+source "$(dirname "$0")/lib.sh"
+
+station=$(station_id "$1")
+units="${2:-e}"
+device=$(station_id "${3:-}")
+# A report older than this marks the station offline.
+stale_after=900
+# Flagged as low below this. Firmware 175+ starts sampling wind less often
+# below about 2.65 V; older firmware leaves full performance below 2.455 V and
+# stops rain readings at 2.355 V. 0 means the voltage reading itself failed.
+battery_low=2.41
+
+[[ -n $station ]] || fail no-station "No station selected"
+load_key
+
+request "observations/station/${station}"
+check_status no-station "Station $station not found; check the station in setup"
+
+# Tempest reports errors inside a 200 too, e.g. a station the token can't see.
+code=$(jq -r '.status.status_code // 0' <<<"$body" 2>/dev/null) || fail http "Unexpected response for station $station"
+[[ $code == 0 ]] || fail no-station "Station $station: $(jq -r '.status.status_message // "not available"' <<<"$body")"
+
+tz=$(jq -r '.timezone // "UTC"' <<<"$body")
+station_body=$body
+
+# Battery voltage comes only from the sensor's own observations (obs_st
+# field 16). It is optional: any failure here just leaves it null.
+battery=null
+if [[ -z $device ]]; then
+  request "stations/${station}"
+  [[ $status == 200 ]] && device=$(jq -r 'first(.stations[0].devices[]? | select(.device_type == "ST") | .device_id) // empty' <<<"$body" 2>/dev/null)
+fi
+if [[ -n $device ]]; then
+  request "observations/device/${device}"
+  [[ $status == 200 ]] && battery=$(jq -c '.obs[-1][16] // null' <<<"$body" 2>/dev/null)
+  [[ $battery =~ ^[0-9.]+$ ]] || battery=null
+fi
+
+# Observations are always metric (°C, m/s, mb, mm); convert to the requested
+# units here. obs[0] is missing when the station has never reported.
+# The $ names are jq variables, not shell ones.
+# shellcheck disable=SC2016
+TZ=$tz jq -ce --arg u "$units" --argjson battery "$battery" --argjson low "$battery_low" --argjson now "${TEMPEST_NOW:-$(date +%s)}" --argjson stale "$stale_after" '
+  def r($d): if . == null then null else (. * pow(10; $d) | round) / pow(10; $d) end;
+  def temp: if . == null then null elif $u == "e" then . * 9 / 5 + 32 else . end | r(1);
+  def speed: if . == null then null elif $u == "m" then . * 3.6 else . * 2.23694 end | r(1);
+  def pressure: if . == null then null elif $u == "e" then . * 0.02953 | r(2) else r(1) end;
+  def precip: if . == null then null elif $u == "e" then . / 25.4 | r(2) else r(1) end;
+  .obs[0] as $o
+  | if $o == null then error("no observations") else . end
+  | {
+      ok: true,
+      stale: (($now - $o.timestamp) > $stale),
+      station: (.station_id | tostring),
+      neighborhood: (.public_name // .station_name),
+      obsTime: ($o.timestamp | strflocaltime("%Y-%m-%d %H:%M:%S")),
+      obsEpoch: $o.timestamp,
+      units: $u,
+      temp: ($o.air_temperature | temp),
+      feels: ($o.feels_like | temp),
+      dewpt: ($o.dew_point | temp),
+      humidity: $o.relative_humidity,
+      windSpeed: ($o.wind_avg | speed),
+      windGust: ($o.wind_gust | speed),
+      winddir: $o.wind_direction,
+      pressure: ($o.sea_level_pressure | pressure),
+      pressureTrend: $o.pressure_trend,
+      # precip is the last minute of rain; times 60 gives a rate per hour.
+      precipRate: (if $o.precip == null then null else $o.precip * 60 end | precip),
+      precipTotal: ($o.precip_accum_local_day | precip),
+      uv: $o.uv,
+      solarRadiation: $o.solar_radiation,
+      lightningLastHour: $o.lightning_strike_count_last_1hr,
+      lightningLast3Hours: $o.lightning_strike_count_last_3hr,
+      battery: $battery,
+      batteryLow: (if $battery == null then null else $battery < $low end),
+      lat: .latitude,
+      lon: .longitude,
+      timezone: .timezone
+    }' <<<"$station_body" 2>/dev/null || {
+  jq -e '.obs | length > 0' <<<"$station_body" >/dev/null 2>&1 || fail no-data "Station $station has no observations yet"
+  fail http "Unexpected response for station $station"
+}

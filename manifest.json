@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.jeremiahjohnston.tempest",
+  "name": "Tempest Station",
+  "version": "0.1.0",
+  "author": "Jeremiah Johnston",
+  "license": "MIT",
+  "description": "Current temperature from a Tempest (WeatherFlow) weather station, with conditions and an hourly and daily forecast.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Tempest Station",
+    "description": "Outside temperature from your Tempest station, with a details and forecast panel.",
+    "category": "Info",
+    "allowMultiple": true,
+    "defaultSection": "center",
+    "defaults": {
+      "stationId": "",
+      "stationName": "",
+      "sensorDeviceId": "",
+      "units": "auto",
+      "barValue": "temp",
+      "decimals": 0,
+      "showUnit": false,
+      "showForecast": true,
+      "bold": true,
+      "accent": false,
+      "refreshSeconds": 300
+    },
+    "schema": [
+      { "key": "stationId", "type": "string", "label": "Station ID", "description": "Numeric Tempest station ID; pick it from the setup form" },
+      { "key": "stationName", "type": "string", "label": "Station name", "description": "Shown in the panel; filled in by the setup form" },
+      { "key": "sensorDeviceId", "type": "string", "label": "Sensor device ID", "description": "The Tempest sensor, for its battery voltage; filled in by the setup form" },
+      { "key": "units", "type": "enum", "label": "Units", "options": ["auto", "e", "m", "h"], "description": "auto follows your locale; e is °F/mph, m is °C/km/h, h is °C/mph" },
+      { "key": "barValue", "type": "enum", "label": "Bar shows", "options": ["temp", "feels"] },
+      { "key": "decimals", "type": "enum", "label": "Decimal places", "options": [0, 1] },
+      { "key": "showUnit", "type": "bool", "label": "Show °F/°C in the bar" },
+      { "key": "showForecast", "type": "bool", "label": "Show the forecast in the panel" },
+      { "key": "bold", "type": "bool", "label": "Bold reading in the bar" },
+      { "key": "accent", "type": "bool", "label": "Draw the reading in the theme's accent color" },
+      { "key": "refreshSeconds", "type": "int", "label": "Refresh interval (seconds)", "min": 60, "max": 3600 }
+    ]
+  }
+}
