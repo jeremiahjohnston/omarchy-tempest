@@ -17,7 +17,10 @@ BarWidget {
 
   property var obs: ({})
 
-  readonly property string stationId: String(setting("stationId", "")).trim()
+  // Tempest station IDs are numeric. Anything else is treated as unset, so
+  // the ID is always safe in the shell command that opens tempestwx.com.
+  readonly property string stationId: /^\d+$/.test(String(setting("stationId", "")).trim())
+    ? String(setting("stationId", "")).trim() : ""
   readonly property string stationName: String(setting("stationName", "")).trim()
   readonly property string sensorDeviceId: String(setting("sensorDeviceId", "")).trim()
   readonly property string unitsSetting: String(setting("units", "auto"))
