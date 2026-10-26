@@ -21,6 +21,10 @@ case "$config" in
   */observations/station/99999\?*) respond '{"status":{"status_code":404,"status_message":"NOT FOUND"}}' 404 ;;
   */observations/station/88888\?*) respond '{"status":{"status_code":2,"status_message":"Unauthorized station"}}' 200 ;;
   */observations/station/77777\?*) respond "{$(printf "$station" 77777),\"obs\":[]}" 200 ;;
+  */observations/station/66666\?*) respond "{$(printf "$station" 66666),\"elevation\":285,\"obs\":[]}" 200 ;;
+  */stations/66666\?*) respond '{"status":{"status_code":0},"stations":[{"station_id":66666,"devices":[{"device_id":5,"device_type":"HB"},{"device_id":4,"device_type":"ST"}]}]}' 200 ;;
+  */observations/device/4\?*) respond '{"status":{"status_code":0},"type":"obs_st","summary":{"feels_like":31.5,"pressure_trend":"falling","strike_count_1h":1,"strike_count_3h":3},
+    "obs":[[1792550400,0,2,5,225,3,988.6,30.9,36,30,0.5,12,0.1,0,0,0,2.45,1,12.7,0,0,0]]}' 200 ;;
   */observations/station/55555\?*) respond "{$(printf "$station" 55555),\"obs\":[{\"timestamp\":1792550400,\"air_temperature\":18.0,\"feels_like\":18.0}]}" 200 ;;
   */observations/station/12345\?*) respond "{$(printf "$station" 12345),\"obs\":[{\"timestamp\":1792554000,
     \"air_temperature\":10.0,\"feels_like\":8.0,\"dew_point\":4.0,\"relative_humidity\":66,\"wind_avg\":2.0,\"wind_gust\":5.0,

@@ -35,5 +35,9 @@ check "unknown station" '.code == "no-station" and (.error | test("99999"))' "$(
 check "error status inside a 200" '.code == "no-station" and (.error | test("Unauthorized station"))' "$(run 88888 e)"
 check "station that never reported" '.code == "no-data" and (.error | test("77777"))' "$(run 77777 e)"
 check "old report is stale but still shown" '.ok and .stale and .temp == 64.4 and .obsTime == "2026-10-20 21:40:00"' "$(run 55555 e)"
+out=$(run 66666 m)
+check "no recent station obs falls back to the sensor's last report" '.ok and .stale and .obsTime == "2026-10-20 21:40:00" and .temp == 30.9 and .feels == 31.5' "$out"
+check "fallback derives dew point and sea-level pressure" '.dewpt >= 14 and .dewpt <= 14.2 and .pressure >= 1022 and .pressure <= 1024' "$out"
+check "fallback keeps battery, rain and lightning" '.battery == 2.45 and .precipTotal == 12.7 and .precipRate == 6 and .lightningLast3Hours == 3 and .pressureTrend == "falling"' "$out"
 check "network failure" '.code == "network"' "$(STUB_STATUS=000 run 12345 e)"
 check "server error" '.code == "http" and (.error | test("503"))' "$(STUB_STATUS=503 run 12345 e)"
