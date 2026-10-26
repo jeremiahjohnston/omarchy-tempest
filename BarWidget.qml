@@ -93,13 +93,15 @@ BarWidget {
     if (!obs.ok) return obs.error ? place + ": " + obs.error : "Loading " + place + "…"
     var lines = [
       (obs.neighborhood ? obs.neighborhood + " · " : "") + obs.station
-        + (obs.stale ? " (offline)" : ""),
+        + (obs.estimated ? " (offline, estimated)" : obs.stale ? " (offline)" : ""),
       "Temp " + formatTemp(obs.temp) + deg + " · feels " + formatTemp(obs.feels) + deg,
       "Humidity " + formatTemp(obs.humidity, 0) + "% · dew point " + formatTemp(obs.dewpt) + deg,
       "Wind " + compass(obs.winddir) + " " + formatTemp(obs.windSpeed, 0) + " " + speedUnit
         + " · gust " + formatTemp(obs.windGust, 0) + " " + speedUnit,
-      (obs.stale ? "Last report " : "Updated ") + String(obs.obsTime || "").replace(/^\d{4}-\d\d-\d\d /, "")
+      (obs.stale ? "Last report " : "Updated ") + (String(obs.obsTime || "").replace(/^\d{4}-\d\d-\d\d /, "") || "none")
     ]
+    // Tempest's own estimate for the station, shown while it has no reading.
+    if (obs.estimated) lines.splice(1, 0, "Estimated by Tempest, not measured")
     if (obs.batteryLow) lines.push("Sensor battery low: " + formatTemp(obs.battery, 2) + " V")
     return lines.join("\n")
   }

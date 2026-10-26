@@ -32,30 +32,67 @@ code=$(jq -r '.status.status_code // 0' <<<"$body" 2>/dev/null) || fail http "Un
 tz=$(jq -r '.timezone // "UTC"' <<<"$body")
 station_body=$body
 
-# Battery voltage comes only from the sensor's own observations (obs_st
-# field 16). It is optional: any failure here just leaves it null.
+# The sensor's own latest observation (obs_st) gives the battery voltage
+# (field 16). It also stands in for the station's reading when the station
+# has none recent, so an offline station still shows its last report.
+# Any failure here just leaves both out.
 battery=null
+device_body='{}'
 if [[ -z $device ]]; then
   request "stations/${station}"
   [[ $status == 200 ]] && device=$(jq -r 'first(.stations[0].devices[]? | select(.device_type == "ST") | .device_id) // empty' <<<"$body" 2>/dev/null)
 fi
 if [[ -n $device ]]; then
   request "observations/device/${device}"
-  [[ $status == 200 ]] && battery=$(jq -c '.obs[-1][16] // null' <<<"$body" 2>/dev/null)
+  if [[ $status == 200 ]] && jq -e '.obs[-1] | type == "array"' <<<"$body" >/dev/null 2>&1; then
+    device_body=$body
+    # A failed voltage reading comes through as 0, not as a flat battery.
+    battery=$(jq -c '.obs[-1][16] | if . == 0 then null else . end' <<<"$body")
+  fi
   [[ $battery =~ ^[0-9.]+$ ]] || battery=null
 fi
 
 # Observations are always metric (°C, m/s, mb, mm); convert to the requested
-# units here. obs[0] is missing when the station has never reported.
+# units here. The station's obs[0] is missing when it has nothing recent; the
+# sensor's last obs_st row is used instead, and missing too when the station
+# has never reported.
 # The $ names are jq variables, not shell ones.
 # shellcheck disable=SC2016
-TZ=$tz jq -ce --arg u "$units" --argjson battery "$battery" --argjson low "$battery_low" --argjson now "${TEMPEST_NOW:-$(date +%s)}" --argjson stale "$stale_after" '
+out=$(TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson battery "$battery" --argjson low "$battery_low" --argjson now "${TEMPEST_NOW:-$(date +%s)}" --argjson stale "$stale_after" '
   def r($d): if . == null then null else (. * pow(10; $d) | round) / pow(10; $d) end;
   def temp: if . == null then null elif $u == "e" then . * 9 / 5 + 32 else . end | r(1);
   def speed: if . == null then null elif $u == "m" then . * 3.6 else . * 2.23694 end | r(1);
   def pressure: if . == null then null elif $u == "e" then . * 0.02953 | r(2) else r(1) end;
   def precip: if . == null then null elif $u == "e" then . / 25.4 | r(2) else r(1) end;
-  .obs[0] as $o
+  # obs_st fields: 0 time, 2 wind avg, 3 gust, 4 direction, 6 station
+  # pressure, 7 temperature, 8 humidity, 10 UV, 11 solar, 12 rain over the
+  # report interval (17, minutes), 18 rain today. Dew point (Magnus) and
+  # sea-level pressure are derived; the summary has the rest.
+  def from_device($elevation):
+    $dev.obs[-1] as $d | ($dev.summary // {}) as $s | $d[7] as $t
+    | (if $t != null and ($d[8] // 0) > 0 then ((($d[8] / 100) | log) + 17.62 * $t / (243.12 + $t)) else null end) as $g
+    | {
+        timestamp: $d[0],
+        air_temperature: $t,
+        feels_like: ($s.feels_like // $t),
+        dew_point: (if $g == null then null else 243.12 * $g / (17.62 - $g) end),
+        relative_humidity: $d[8],
+        wind_avg: $d[2],
+        wind_gust: $d[3],
+        wind_direction: $d[4],
+        # The standard-atmosphere reduction Tempest uses, from the ground
+        # elevation; Tempest also adds the sensor height, so this reads ~1 hPa low.
+        sea_level_pressure: (if $d[6] == null then null
+          else $d[6] * pow(1 + pow(1013.25 / $d[6]; 0.190263) * 0.0065 * $elevation / 288.15; 5.25588) end),
+        pressure_trend: $s.pressure_trend,
+        precip: (if $d[12] == null then null else $d[12] / ($d[17] // 1) end),
+        precip_accum_local_day: $d[18],
+        uv: $d[10],
+        solar_radiation: $d[11],
+        lightning_strike_count_last_1hr: $s.strike_count_1h,
+        lightning_strike_count_last_3hr: $s.strike_count_3h
+      };
+  (.obs[0] // (if ($dev.obs[-1] | type) == "array" then from_device(.elevation // 0) else null end)) as $o
   | if $o == null then error("no observations") else . end
   | {
       ok: true,
@@ -86,7 +123,60 @@ TZ=$tz jq -ce --arg u "$units" --argjson battery "$battery" --argjson low "$batt
       lat: .latitude,
       lon: .longitude,
       timezone: .timezone
-    }' <<<"$station_body" 2>/dev/null || {
-  jq -e '.obs | length > 0' <<<"$station_body" >/dev/null 2>&1 || fail no-data "Station $station has no observations yet"
-  fail http "Unexpected response for station $station"
-}
+    }' <<<"$station_body" 2>/dev/null) || out=
+
+# With no current reading, show the conditions Tempest itself shows on the
+# station page (better_forecast's current_conditions, which it fills in from
+# its model while the station is quiet). It is marked estimated and stays
+# stale, so the bar is still dimmed; obsTime keeps the last real report, and
+# anything the conditions leave out (like today's rain) keeps its last value.
+# Real readings take over again as soon as the station reports.
+if [[ -z $out ]] || jq -e '.stale' <<<"$out" >/dev/null 2>&1; then
+  request "better_forecast?station_id=${station}&$(units_query "$units")"
+  if [[ $status == 200 ]]; then
+    # shellcheck disable=SC2016
+    estimate=$(TZ=$tz jq -ce --arg u "$units" --argjson base "${out:-null}" --argjson station "$station_body" '
+      def r($d): if . == null then null else (. * pow(10; $d) | round) / pow(10; $d) end;
+      .current_conditions as $c
+      | if ($c.air_temperature | type) != "number" then error("no conditions") else . end
+      | ($base // {
+          ok: true,
+          station: ($station.station_id | tostring),
+          neighborhood: ($station.public_name // $station.station_name),
+          obsTime: null,
+          obsEpoch: null,
+          units: $u,
+          precipRate: null,
+          lightningLastHour: null,
+          lightningLast3Hours: null,
+          battery: null,
+          batteryLow: null,
+          lat: $station.latitude,
+          lon: $station.longitude,
+          timezone: $station.timezone
+        }) + ({
+          stale: true,
+          estimated: true,
+          estimateTime: ($c.time | strflocaltime("%Y-%m-%d %H:%M:%S")),
+          temp: ($c.air_temperature | r(1)),
+          feels: ($c.feels_like | r(1)),
+          dewpt: ($c.dew_point | r(1)),
+          humidity: $c.relative_humidity,
+          windSpeed: ($c.wind_avg | r(1)),
+          windGust: ($c.wind_gust | r(1)),
+          winddir: $c.wind_direction,
+          pressure: ($c.sea_level_pressure | if $u == "e" then r(2) else r(1) end),
+          pressureTrend: $c.pressure_trend,
+          precipTotal: ($c.precip_accum_local_day | if $u == "e" then r(2) else r(1) end),
+          uv: $c.uv,
+          solarRadiation: $c.solar_radiation
+        } | with_entries(select(.value != null)))' <<<"$body" 2>/dev/null) && out=$estimate
+  fi
+fi
+
+if [[ -n $out ]]; then
+  echo "$out"
+  exit 0
+fi
+jq -e '.obs | length > 0' <<<"$station_body" >/dev/null 2>&1 || fail no-data "Station $station has no observations yet"
+fail http "Unexpected response for station $station"

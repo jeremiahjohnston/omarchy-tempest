@@ -106,8 +106,10 @@ On a vertical bar the degree sign is left off so three-digit readings fit.
 - **"This token can't see any stations":** the token belongs to a different Tempest account
   from the station.
 - **The reading is dimmed and the panel says "offline since …":** the station hasn't reported
-  for over 15 minutes. Check the sensor's battery and its signal to the hub in the Tempest app.
-  The widget picks the station up again automatically.
+  for over 15 minutes. The widget shows the temperature Tempest's own station page shows
+  instead, which Tempest estimates while the station is quiet (the tooltip and panel say
+  "estimated"), or the last report when Tempest has no estimate. Check the sensor's battery and
+  the hub's connection in the Tempest app. The widget picks the station up again automatically.
 - **The widget doesn't appear after enabling it:** if `omarchy plugin enable` runs while the
   shell is still noticing a newly copied plugin folder, the shell rejects it as an unknown
   plugin. Run `omarchy plugin enable io.github.jeremiahjohnston.tempest` again.
