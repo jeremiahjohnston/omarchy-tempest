@@ -273,7 +273,8 @@ Panel {
               elide: Text.ElideRight
               // The title already shows the station ID when there is no
               // neighborhood name.
-              text: (root.obs.neighborhood ? (root.obs.station || root.stationId) + " · " : "") + (root.observedAt()
+              text: (root.obs.neighborhood ? (root.obs.station || root.stationId) + " · " : "")
+                + (root.obs.estimated ? "estimated" + (root.observedAt() ? " · " : "") : "") + (root.observedAt()
                 ? (root.obs.stale ? "offline since " : "observed ") + root.observedAt() : "")
               color: root.obs.stale ? root.urgentColor : root.dimColor
               font.family: root.fontFamily

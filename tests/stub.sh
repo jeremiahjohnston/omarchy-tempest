@@ -30,6 +30,15 @@ case "$config" in
     \"air_temperature\":10.0,\"feels_like\":8.0,\"dew_point\":4.0,\"relative_humidity\":66,\"wind_avg\":2.0,\"wind_gust\":5.0,
     \"wind_direction\":225,\"sea_level_pressure\":1016.6,\"pressure_trend\":\"steady\",\"precip\":0.1,\"precip_accum_local_day\":12.7,
     \"uv\":0,\"solar_radiation\":0,\"lightning_strike_count_last_1hr\":0,\"lightning_strike_count_last_3hr\":2}]}" 200 ;;
+  */observations/station/44444\?*) respond "{$(printf "$station" 44444),\"obs\":[]}" 200 ;;
+  */observations/station/33333\?*) respond "{$(printf "$station" 33333),\"obs\":[{\"timestamp\":1792550400,\"air_temperature\":18.0,\"feels_like\":18.0,\"precip_accum_local_day\":2.54}]}" 200 ;;
+  */better_forecast\?station_id=44444\&*|*/better_forecast\?station_id=33333\&*)
+    respond '{"timezone":"America/Chicago","status":{"status_code":0},"current_conditions":{"time":1792554060,"conditions":"Clear",
+      "air_temperature":51.4,"feels_like":49,"dew_point":40,"relative_humidity":66,"wind_avg":4,"wind_gust":9,"wind_direction":220,
+      "sea_level_pressure":30.024,"pressure_trend":"rising","uv":0,"solar_radiation":0},"forecast":{"daily":[],"hourly":[]}}' 200 ;;
+  */observations/station/22222\?*) respond "{$(printf "$station" 22222),\"obs\":[]}" 200 ;;
+  */stations/22222\?*) respond '{"status":{"status_code":0},"stations":[{"station_id":22222,"devices":[{"device_id":6,"device_type":"ST"}]}]}' 200 ;;
+  */observations/device/6\?*) respond '{"status":{"status_code":0},"type":"obs_st","obs":[[1792554000,0,2,5,225,3,988.6,10,66,30,0,0,0,0,0,0,0,1]]}' 200 ;;
   */better_forecast\?station_id=99999\&*) respond '{"status":{"status_code":404,"status_message":"NOT FOUND"}}' 404 ;;
   */better_forecast\?station_id=12345*) respond '{"timezone":"America/Chicago","status":{"status_code":0},
     "current_conditions":{"time":1792554000,"conditions":"Clear","icon":"clear-night","pressure_trend":"steady","precip_accum_local_day":0.5},

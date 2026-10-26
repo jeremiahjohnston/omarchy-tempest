@@ -46,7 +46,8 @@ if [[ -n $device ]]; then
   request "observations/device/${device}"
   if [[ $status == 200 ]] && jq -e '.obs[-1] | type == "array"' <<<"$body" >/dev/null 2>&1; then
     device_body=$body
-    battery=$(jq -c '.obs[-1][16] // null' <<<"$body")
+    # A failed voltage reading comes through as 0, not as a flat battery.
+    battery=$(jq -c '.obs[-1][16] | if . == 0 then null else . end' <<<"$body")
   fi
   [[ $battery =~ ^[0-9.]+$ ]] || battery=null
 fi
@@ -57,7 +58,7 @@ fi
 # has never reported.
 # The $ names are jq variables, not shell ones.
 # shellcheck disable=SC2016
-TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson battery "$battery" --argjson low "$battery_low" --argjson now "${TEMPEST_NOW:-$(date +%s)}" --argjson stale "$stale_after" '
+out=$(TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson battery "$battery" --argjson low "$battery_low" --argjson now "${TEMPEST_NOW:-$(date +%s)}" --argjson stale "$stale_after" '
   def r($d): if . == null then null else (. * pow(10; $d) | round) / pow(10; $d) end;
   def temp: if . == null then null elif $u == "e" then . * 9 / 5 + 32 else . end | r(1);
   def speed: if . == null then null elif $u == "m" then . * 3.6 else . * 2.23694 end | r(1);
@@ -122,7 +123,60 @@ TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson battery "$
       lat: .latitude,
       lon: .longitude,
       timezone: .timezone
-    }' <<<"$station_body" 2>/dev/null || {
-  jq -e '.obs | length > 0' <<<"$station_body" >/dev/null 2>&1 || fail no-data "Station $station has no observations yet"
-  fail http "Unexpected response for station $station"
-}
+    }' <<<"$station_body" 2>/dev/null) || out=
+
+# With no current reading, show the conditions Tempest itself shows on the
+# station page (better_forecast's current_conditions, which it fills in from
+# its model while the station is quiet). It is marked estimated and stays
+# stale, so the bar is still dimmed; obsTime keeps the last real report, and
+# anything the conditions leave out (like today's rain) keeps its last value.
+# Real readings take over again as soon as the station reports.
+if [[ -z $out ]] || jq -e '.stale' <<<"$out" >/dev/null 2>&1; then
+  request "better_forecast?station_id=${station}&$(units_query "$units")"
+  if [[ $status == 200 ]]; then
+    # shellcheck disable=SC2016
+    estimate=$(TZ=$tz jq -ce --arg u "$units" --argjson base "${out:-null}" --argjson station "$station_body" '
+      def r($d): if . == null then null else (. * pow(10; $d) | round) / pow(10; $d) end;
+      .current_conditions as $c
+      | if ($c.air_temperature | type) != "number" then error("no conditions") else . end
+      | ($base // {
+          ok: true,
+          station: ($station.station_id | tostring),
+          neighborhood: ($station.public_name // $station.station_name),
+          obsTime: null,
+          obsEpoch: null,
+          units: $u,
+          precipRate: null,
+          lightningLastHour: null,
+          lightningLast3Hours: null,
+          battery: null,
+          batteryLow: null,
+          lat: $station.latitude,
+          lon: $station.longitude,
+          timezone: $station.timezone
+        }) + ({
+          stale: true,
+          estimated: true,
+          estimateTime: ($c.time | strflocaltime("%Y-%m-%d %H:%M:%S")),
+          temp: ($c.air_temperature | r(1)),
+          feels: ($c.feels_like | r(1)),
+          dewpt: ($c.dew_point | r(1)),
+          humidity: $c.relative_humidity,
+          windSpeed: ($c.wind_avg | r(1)),
+          windGust: ($c.wind_gust | r(1)),
+          winddir: $c.wind_direction,
+          pressure: ($c.sea_level_pressure | if $u == "e" then r(2) else r(1) end),
+          pressureTrend: $c.pressure_trend,
+          precipTotal: ($c.precip_accum_local_day | if $u == "e" then r(2) else r(1) end),
+          uv: $c.uv,
+          solarRadiation: $c.solar_radiation
+        } | with_entries(select(.value != null)))' <<<"$body" 2>/dev/null) && out=$estimate
+  fi
+fi
+
+if [[ -n $out ]]; then
+  echo "$out"
+  exit 0
+fi
+jq -e '.obs | length > 0' <<<"$station_body" >/dev/null 2>&1 || fail no-data "Station $station has no observations yet"
+fail http "Unexpected response for station $station"
