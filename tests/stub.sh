@@ -38,6 +38,8 @@ case "$config" in
       "sea_level_pressure":30.024,"pressure_trend":"rising","uv":0,"solar_radiation":0},"forecast":{"daily":[],"hourly":[]}}' 200 ;;
   */observations/station/22222\?*) respond "{$(printf "$station" 22222),\"obs\":[]}" 200 ;;
   */stations/22222\?*) respond '{"status":{"status_code":0},"stations":[{"station_id":22222,"devices":[{"device_id":6,"device_type":"ST"}]}]}' 200 ;;
+  */observations/device/6\?time_start=*) respond '{"status":{"status_code":0},"type":"obs_st","obs":[[1792550400,0,2,5,225,3,988.6,10,66,30,0,0,0,0,0,0,2.48,1],[1792554000,0,2,5,225,3,988.6,10,66,30,0,0,0,0,0,0,0,1]]}' 200 ;;
+  */observations/device/7\?*) respond '{"status":{"status_code":0},"type":"obs_st","obs":[[1792554000,0,2,5,225,3,988.6,10,66,30,0,0,0,0,0,0,0,1]]}' 200 ;;
   */observations/device/6\?*) respond '{"status":{"status_code":0},"type":"obs_st","obs":[[1792554000,0,2,5,225,3,988.6,10,66,30,0,0,0,0,0,0,0,1]]}' 200 ;;
   */better_forecast\?station_id=99999\&*) respond '{"status":{"status_code":404,"status_message":"NOT FOUND"}}' 404 ;;
   */better_forecast\?station_id=12345*) respond '{"timezone":"America/Chicago","status":{"status_code":0},
