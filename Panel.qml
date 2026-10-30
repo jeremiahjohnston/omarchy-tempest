@@ -179,7 +179,12 @@ Panel {
   }
 
   function observedAt() {
-    var match = String(obs.obsTime || "").match(/ (\d\d):(\d\d)/)
+    return clockOf(obs.obsTime)
+  }
+
+  // "2026-10-25 20:53:00" as "8:53 PM".
+  function clockOf(time) {
+    var match = String(time || "").match(/ (\d\d):(\d\d)/)
     if (!match) return ""
     var hour = Number(match[1])
     return (hour % 12 === 0 ? 12 : hour % 12) + ":" + match[2] + (hour < 12 ? " AM" : " PM")
@@ -311,6 +316,7 @@ Panel {
                 textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.num(root.obs.battery, 2) + " V" + (root.obs.batteryLow === true ? " · low" : "")
+                  + (root.obs.batteryTime ? " · as of " + root.clockOf(root.obs.batteryTime) : "")
                 color: root.obs.batteryLow === true ? root.urgentColor : root.dimColor
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption

@@ -69,7 +69,8 @@ If `TEMPEST_TOKEN` is set in the shell's environment, it overrides the key file.
 
 The panel shows the sensor's battery as a small gauge with its voltage under the station name.
 The gauge is empty at 2.35 V and full at 2.65 V. It turns red, and the tooltip and panel warn
-you, below 2.41 V.
+you, below 2.41 V. When the latest reading's voltage failed (it comes through as 0 V), the panel
+shows the last good voltage from the past day with "as of" and its time.
 
 For reference: on firmware 175 and newer the Tempest samples wind less often below about
 2.65 V to save power. Older firmware leaves full performance below 2.455 V and turns the rain

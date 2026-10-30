@@ -37,6 +37,7 @@ station_body=$body
 # has none recent, so an offline station still shows its last report.
 # Any failure here just leaves both out.
 battery=null
+battery_epoch=
 device_body='{}'
 if [[ -z $device ]]; then
   request "stations/${station}"
@@ -50,6 +51,16 @@ if [[ -n $device ]]; then
     battery=$(jq -c '.obs[-1][16] | if . == 0 then null else . end' <<<"$body")
   fi
   [[ $battery =~ ^[0-9.]+$ ]] || battery=null
+  # Then the last good voltage from the past day, with its time.
+  if [[ $battery == null ]]; then
+    now=${TEMPEST_NOW:-$(date +%s)}
+    request "observations/device/${device}?time_start=$((now - 86400))&time_end=${now}"
+    if [[ $status == 200 ]]; then
+      battery_epoch=$(jq -r 'last(.obs[]? | select((.[16] // 0) > 0)) | .[0] // empty' <<<"$body" 2>/dev/null)
+      [[ -n $battery_epoch ]] && battery=$(jq -c 'last(.obs[] | select((.[16] // 0) > 0)) | .[16]' <<<"$body")
+      [[ $battery =~ ^[0-9.]+$ ]] || battery=null
+    fi
+  fi
 fi
 
 # Observations are always metric (°C, m/s, mb, mm); convert to the requested
@@ -58,7 +69,7 @@ fi
 # has never reported.
 # The $ names are jq variables, not shell ones.
 # shellcheck disable=SC2016
-out=$(TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson battery "$battery" --argjson low "$battery_low" --argjson now "${TEMPEST_NOW:-$(date +%s)}" --argjson stale "$stale_after" '
+out=$(TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson battery "$battery" --arg batteryEpoch "$battery_epoch" --argjson low "$battery_low" --argjson now "${TEMPEST_NOW:-$(date +%s)}" --argjson stale "$stale_after" '
   def r($d): if . == null then null else (. * pow(10; $d) | round) / pow(10; $d) end;
   def temp: if . == null then null elif $u == "e" then . * 9 / 5 + 32 else . end | r(1);
   def speed: if . == null then null elif $u == "m" then . * 3.6 else . * 2.23694 end | r(1);
@@ -120,6 +131,8 @@ out=$(TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson batt
       lightningLast3Hours: $o.lightning_strike_count_last_3hr,
       battery: $battery,
       batteryLow: (if $battery == null then null else $battery < $low end),
+      # Set only when the voltage comes from an earlier reading.
+      batteryTime: (if $batteryEpoch == "" then null else $batteryEpoch | tonumber | strflocaltime("%Y-%m-%d %H:%M:%S") end),
       lat: .latitude,
       lon: .longitude,
       timezone: .timezone

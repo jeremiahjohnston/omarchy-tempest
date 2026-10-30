@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.jeremiahjohnston.tempest",
   "name": "Tempest Station",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Jeremiah Johnston",
   "license": "MIT",
   "description": "Current temperature from a Tempest (WeatherFlow) weather station, with conditions and an hourly and daily forecast.",
