@@ -126,6 +126,16 @@ Panel {
     }
   }
 
+  // The name you gave the station, which tells two stations at one place
+  // apart better than the public name. The ID is added when two still match.
+  function stationLabel(station) {
+    var label = station.stationName || station.name || station.id
+    var same = (stations.stations || []).filter(function(other) {
+      return (other.stationName || other.name || other.id) === label
+    })
+    return same.length > 1 ? label + " · " + station.id : label
+  }
+
   function selectStation(id) {
     if (!hostWidget || id === stationId) return
     var name = ""
@@ -727,7 +737,7 @@ Panel {
         ButtonGroup {
           visible: !!root.stations.ok && root.stations.stations.length > 0
           options: root.stations.ok ? root.stations.stations.map(function(station) {
-            return { value: station.id, label: station.name || station.id }
+            return { value: station.id, label: root.stationLabel(station) }
           }) : []
           value: root.stationId
           foreground: root.barForeground
