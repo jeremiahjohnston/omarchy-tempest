@@ -25,6 +25,10 @@ Panel {
   property string keyStatus: ""
   // The stations the token can see, from tempest-stations.
   property var stations: ({})
+  // Whether the saved station is one of them.
+  readonly property bool stationListed: !!stations.ok && stations.stations.some(function(station) {
+    return station.id === stationId
+  })
 
   readonly property var barIdentity: hostWidget || root
   readonly property var obs: hostWidget && hostWidget.obs ? hostWidget.obs : ({})
@@ -122,6 +126,16 @@ Panel {
     }
   }
 
+  // The name you gave the station, which tells two stations at one place
+  // apart better than the public name. The ID is added when two still match.
+  function stationLabel(station) {
+    var label = station.stationName || station.name || station.id
+    var same = (stations.stations || []).filter(function(other) {
+      return (other.stationName || other.name || other.id) === label
+    })
+    return same.length > 1 ? label + " · " + station.id : label
+  }
+
   function selectStation(id) {
     if (!hostWidget || id === stationId) return
     var name = ""
@@ -196,6 +210,8 @@ Panel {
     if (!hasKey) return "Paste your access token to start."
     if (stations.code === "bad-key" || obs.code === "bad-key") return "The access token was rejected."
     if (stations.ok && stations.stations.length === 0) return "This token can't see any stations."
+    if (stations.ok && stationId !== "" && !stationListed)
+      return "Station " + stationId + " isn't on this account anymore. Pick your station."
     if (obs.ok && obs.stale) return "Found " + obs.station + ", but it is offline; last report "
       + observedAt() + "."
     if (obs.ok) return "Connected to " + (obs.neighborhood ? obs.neighborhood + " · " : "") + obs.station
@@ -721,7 +737,7 @@ Panel {
         ButtonGroup {
           visible: !!root.stations.ok && root.stations.stations.length > 0
           options: root.stations.ok ? root.stations.stations.map(function(station) {
-            return { value: station.id, label: station.name || station.id }
+            return { value: station.id, label: root.stationLabel(station) }
           }) : []
           value: root.stationId
           foreground: root.barForeground
@@ -876,9 +892,11 @@ Panel {
           root.stations = { ok: false, error: "Could not read the station list" }
         }
         root.keyStatus = ""
-        // With a single station there is nothing to choose.
+        // With a single station there is nothing to choose. That includes a
+        // saved station the token no longer sees, such as one deleted and
+        // set up again under a new ID.
         var list = root.stations.ok ? root.stations.stations : []
-        if (root.stationId === "" && list.length === 1) root.selectStation(list[0].id)
+        if (!root.stationListed && list.length === 1) root.selectStation(list[0].id)
         root.focusSetup()
       }
     }
