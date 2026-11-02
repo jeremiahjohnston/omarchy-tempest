@@ -25,6 +25,10 @@ Panel {
   property string keyStatus: ""
   // The stations the token can see, from tempest-stations.
   property var stations: ({})
+  // Whether the saved station is one of them.
+  readonly property bool stationListed: !!stations.ok && stations.stations.some(function(station) {
+    return station.id === stationId
+  })
 
   readonly property var barIdentity: hostWidget || root
   readonly property var obs: hostWidget && hostWidget.obs ? hostWidget.obs : ({})
@@ -196,6 +200,8 @@ Panel {
     if (!hasKey) return "Paste your access token to start."
     if (stations.code === "bad-key" || obs.code === "bad-key") return "The access token was rejected."
     if (stations.ok && stations.stations.length === 0) return "This token can't see any stations."
+    if (stations.ok && stationId !== "" && !stationListed)
+      return "Station " + stationId + " isn't on this account anymore. Pick your station."
     if (obs.ok && obs.stale) return "Found " + obs.station + ", but it is offline; last report "
       + observedAt() + "."
     if (obs.ok) return "Connected to " + (obs.neighborhood ? obs.neighborhood + " · " : "") + obs.station
@@ -876,9 +882,11 @@ Panel {
           root.stations = { ok: false, error: "Could not read the station list" }
         }
         root.keyStatus = ""
-        // With a single station there is nothing to choose.
+        // With a single station there is nothing to choose. That includes a
+        // saved station the token no longer sees, such as one deleted and
+        // set up again under a new ID.
         var list = root.stations.ok ? root.stations.stations : []
-        if (root.stationId === "" && list.length === 1) root.selectStation(list[0].id)
+        if (!root.stationListed && list.length === 1) root.selectStation(list[0].id)
         root.focusSetup()
       }
     }
