@@ -128,7 +128,9 @@ rm -f ~/.config/omarchy/tempest.key
 The scripts in `scripts/` talk to the [Tempest REST API](https://weatherflow.github.io/Tempest/api/),
 each printing one line of JSON: `tempest-current` for the latest reading and battery,
 `tempest-details` for the hourly and daily forecast, `tempest-stations` for the setup form's
-station list, and `tempest-save-key` to store the token. Run the tests, which use a stubbed
+station list, and `tempest-save-key` to store the token. Every API response is capped at
+1 MB (a larger one fails with code `too-large`), and the station list and forecast are cut to
+50 stations, 48 hours and 10 days, so the shell never holds an unbounded response. Run the tests, which use a stubbed
 `curl`, with:
 
 ```bash

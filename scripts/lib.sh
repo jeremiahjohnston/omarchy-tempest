@@ -5,7 +5,7 @@ key_file="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/tempest.key"
 api="https://swd.weatherflow.com/swd/rest"
 
 # Prints {ok: false, code, error} and exits. The widget keys its setup hints
-# off `code`: no-key, bad-key, no-station, no-data, network, http.
+# off `code`: no-key, bad-key, no-station, no-data, network, http, too-large.
 fail() {
   jq -cn --arg c "$1" --arg e "$2" '{ok: false, code: $c, error: $e}'
   exit 0
@@ -34,15 +34,35 @@ units_query() {
   esac
 }
 
+# The largest response read from the API, in bytes. A forecast is about
+# 50 KB and an account's station list a few KB, so anything near this is not
+# a response the widget can use.
+max_bytes=1048576
+
 # GETs $api/$1 with the token appended and prints the body. The URL goes to
 # curl as a config file on stdin so the token never appears in the process
 # list. Sets $status to the HTTP status (000 when the request did not
 # complete) and $body to the response, both for the calling script.
+# The body is capped at $max_bytes twice over: curl's --max-filesize stops a
+# download that runs past it, and head -c stops reading there whatever curl
+# does, so an oversized response is never held in memory. Either way it
+# fails with code too-large.
 # shellcheck disable=SC2034
 request() {
-  local out sep='?'
+  local out rc sep='?'
   [[ $1 == *\?* ]] && sep='&'
-  out=$(curl -s --max-time 15 -w '\n%{http_code}' -K - <<<"url = \"$api/$1${sep}token=$key\"")
+  # curl's exit code rides on the last line; 63 is --max-filesize tripping.
+  out=$(
+    curl -s --max-time 15 --max-filesize "$max_bytes" -w '\n%{http_code}' -K - <<<"url = \"$api/$1${sep}token=$key\"" |
+      head -c "$((max_bytes + 5))"
+    printf '\n%s' "${PIPESTATUS[0]}"
+  )
+  rc=${out##*$'\n'}
+  out=${out%$'\n'*}
+  # Bytes, not characters: the body may hold multibyte text.
+  if [[ $rc == 63 ]] || (( $(LC_ALL=C; echo "${#out}") > max_bytes + 4 )); then
+    fail too-large "Tempest sent a response over $((max_bytes / 1024)) KB"
+  fi
   status=${out##*$'\n'}
   body=${out%$'\n'*}
 }

@@ -11,6 +11,10 @@ station=$(station_id "$1")
 units="${2:-e}"
 hours="${3:-12}"
 [[ $hours =~ ^[0-9]+$ ]] || hours=12
+# better_forecast gives 10 days and about 10 days of hours; these keep the
+# output bounded whatever it sends.
+(( hours > 48 )) && hours=48
+max_days=10
 
 [[ -n $station ]] || fail no-station "No station selected"
 load_key
@@ -22,9 +26,9 @@ tz=$(jq -r '.timezone // "UTC"' <<<"$body" 2>/dev/null) || fail http "Unexpected
 
 # The $ names are jq variables, not shell ones.
 # shellcheck disable=SC2016
-TZ=$tz jq -ce --argjson hours "$hours" '
+TZ=$tz jq -ce --argjson hours "$hours" --argjson maxDays "$max_days" '
   def clock: if . == null then null else strflocaltime("%-I:%M %p") end;
-  (.forecast.daily // []) as $daily
+  (.forecast.daily // [] | .[:$maxDays]) as $daily
   | (.current_conditions // {}) as $c
   | if (.forecast | type) != "object" then error("no forecast") else . end
   | {

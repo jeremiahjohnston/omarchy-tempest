@@ -52,3 +52,4 @@ check "no good voltage in the past day leaves battery out" '.ok and .battery == 
 check "a current voltage has no separate time" '.battery == 2.55 and .batteryTime == null' "$(run 12345 e)"
 check "network failure" '.code == "network"' "$(STUB_STATUS=000 run 12345 e)"
 check "server error" '.code == "http" and (.error | test("503"))' "$(STUB_STATUS=503 run 12345 e)"
+check "oversized response" '.code == "too-large"' "$(STUB_BIG=1 run 12345 e)"
