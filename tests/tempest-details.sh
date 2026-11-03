@@ -21,3 +21,4 @@ if grep -q 'units_temp=c&units_wind=kph&units_pressure=mb&units_precip=mm' <(tai
 check "hour limit" '.hourly | length == 1' "$(run 12345 e 1)"
 check "no forecast" '.code == "no-data" and (.error | test("99999"))' "$(run 99999 e)"
 check "rejected key" '.code == "bad-key"' "$(STUB_STATUS=401 run 12345 e)"
+check "oversized response" '.code == "too-large"' "$(STUB_BIG=1 run 12345 e)"

@@ -16,6 +16,18 @@ config=$(cat)
 printf '%s\n' "$config" >>"$(dirname "$0")/requests"
 printf '%s\n' "$*" >>"$(dirname "$0")/args"
 respond() { printf '%s\n%s' "$1" "${STUB_STATUS:-$2}"; }
+# STUB_BIG answers every request with a valid 2 MB body, like a server that
+# ignores --max-filesize (no Content-Length); STUB_MANY lists 500 stations.
+if [[ -n ${STUB_BIG:-} ]]; then
+  printf '{"status":{"status_code":0},"stations":[],"pad":"'
+  head -c 2097152 /dev/zero | tr '\0' x
+  respond '"}' 200
+  exit 0
+fi
+if [[ -n ${STUB_MANY:-} ]]; then
+  respond "{\"status\":{\"status_code\":0},\"stations\":[$(for i in $(seq 500); do printf '{"station_id":%d,"name":"%s"},' "$i" "$(printf 'n%.0s' $(seq 200))"; done | sed 's/,$//')]}" 200
+  exit 0
+fi
 station='"station_id":%s,"station_name":"Back Yard","public_name":"Cedar Hollow","latitude":45.1,"longitude":-110.2,"timezone":"America/Chicago","status":{"status_code":0,"status_message":"SUCCESS"}'
 case "$config" in
   */observations/station/99999\?*) respond '{"status":{"status_code":404,"status_message":"NOT FOUND"}}' 404 ;;

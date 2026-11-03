@@ -15,3 +15,7 @@ check "sensor device id" '.stations[0].sensorDeviceId == "2" and .stations[1].se
 check "WU sharing flag" '.stations[0].sharesWithWu == false and .stations[1].sharesWithWu == true' "$out"
 check "missing key" '.code == "no-key"' "$(KEY='' HOME=$stub XDG_CONFIG_HOME=$stub run)"
 check "rejected key" '.code == "bad-key"' "$(STUB_STATUS=401 run)"
+check "caps the station list" '.ok and (.stations | length) == 50 and (.stations[0].name | length) == 80' "$(STUB_MANY=1 run)"
+check "oversized response" '.code == "too-large"' "$(STUB_BIG=1 run)"
+grep -q -- '--max-filesize 1048576' "$stub/args" || { echo "not ok - curl gets --max-filesize"; exit 1; }
+echo "ok - curl gets --max-filesize"

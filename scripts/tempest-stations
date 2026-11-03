@@ -12,15 +12,24 @@ load_key
 request "stations"
 check_status no-station "No stations found for this token"
 
-jq -ce '{
+# At most max_stations, with names cut to max_name characters, so the
+# picker's output stays small whatever the account holds.
+max_stations=50
+max_name=80
+
+# The $ names are jq variables, not shell ones.
+# shellcheck disable=SC2016
+jq -ce --argjson n "$max_stations" --argjson len "$max_name" '
+def text: if type == "string" then .[:$len] else null end;
+{
   ok: true,
-  stations: [.stations // [] | .[] | {
+  stations: [.stations // [] | .[:$n][] | {
     id: (.station_id | tostring),
-    name: (.public_name // .name),
-    stationName: .name,
+    name: ((.public_name // .name) | text),
+    stationName: (.name | text),
     lat: .latitude,
     lon: .longitude,
-    timezone: .timezone,
+    timezone: (.timezone | text),
     sensorDeviceId: (first(.devices[]? | select(.device_type == "ST") | .device_id | tostring) // null),
     sharesWithWu: .station_meta.share_with_wu
   }]
