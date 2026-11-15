@@ -26,6 +26,9 @@ BarWidget {
   readonly property string unitsSetting: String(setting("units", "auto"))
   readonly property string units: ["e", "m", "h"].indexOf(unitsSetting) >= 0 ? unitsSetting : localeUnits()
   readonly property string barValue: setting("barValue", "temp") === "feels" ? "feels" : "temp"
+  // tempest shows what the Tempest app shows (corrected for things like sun
+  // on the sensor); sensor shows the sensor's raw reading.
+  readonly property string reading: setting("reading", "tempest") === "sensor" ? "sensor" : "tempest"
   readonly property int decimals: Number(setting("decimals", 0)) === 1 ? 1 : 0
   readonly property bool showUnit: setting("showUnit", false) === true
   readonly property bool showForecast: setting("showForecast", true) !== false
@@ -63,7 +66,7 @@ BarWidget {
     if (fetcher.running) return
     // Set here rather than bound: a binding can lag the change handler that
     // calls refresh(), which would start the fetch with the old station.
-    fetcher.command = [script, stationId, units, sensorDeviceId]
+    fetcher.command = [script, stationId, units, sensorDeviceId, reading]
     fetcher.running = true
   }
 
@@ -100,6 +103,10 @@ BarWidget {
         + " · gust " + formatTemp(obs.windGust, 0) + " " + speedUnit,
       (obs.stale ? "Last report " : "Updated ") + (String(obs.obsTime || "").replace(/^\d{4}-\d\d-\d\d /, "") || "none")
     ]
+    // The sensor's own reading, when the one Tempest shows differs from it.
+    if (reading === "tempest" && !obs.estimated && obs.sensorTemp !== undefined && obs.sensorTemp !== null
+        && formatTemp(obs.sensorTemp) !== formatTemp(obs.temp))
+      lines.splice(2, 0, "Sensor reads " + formatTemp(obs.sensorTemp) + deg + " (Tempest corrects it)")
     // Tempest's own estimate for the station, shown while it has no reading.
     if (obs.estimated) lines.splice(1, 0, "Estimated by Tempest, not measured")
     if (obs.batteryLow) lines.push("Sensor battery low: " + formatTemp(obs.battery, 2) + " V")
@@ -169,6 +176,7 @@ BarWidget {
   // A new station or unit system makes the current reading stale.
   onStationIdChanged: { obs = ({}); refresh() }
   onUnitsChanged: { obs = ({}); refresh() }
+  onReadingChanged: { obs = ({}); refresh() }
   Component.onCompleted: refresh()
 
   Loader {

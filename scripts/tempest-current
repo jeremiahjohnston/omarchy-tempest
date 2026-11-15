@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Prints the latest observation from a Tempest station as one JSON line.
-# Usage: tempest-current <stationId> <e|m|h> [sensorDeviceId]
+# Usage: tempest-current <stationId> <e|m|h> [sensorDeviceId] [tempest|sensor]
 # The sensor's device ID (the ST device) adds its battery voltage; without it
 # the script looks the sensor up from the station.
+# The last argument picks the reading. tempest (the default) shows the
+# temperature, feels-like, dew point and humidity that the Tempest app shows,
+# which Tempest corrects for things like the sun heating the sensor on a calm
+# morning; sensor shows the sensor's raw reading. The raw reading is kept in
+# sensorTemp and sensorHumidity either way.
 # The token is read from ~/.config/omarchy/tempest.key (or $TEMPEST_TOKEN).
 # $TEMPEST_NOW overrides the current time (epoch seconds) for the tests.
 
@@ -12,6 +17,8 @@ source "$(dirname "$0")/lib.sh"
 station=$(station_id "$1")
 units="${2:-e}"
 device=$(station_id "${3:-}")
+source=${4:-tempest}
+[[ $source == sensor ]] || source=tempest
 # A report older than this marks the station offline.
 stale_after=900
 # Flagged as low below this. Firmware 175+ starts sampling wind less often
@@ -114,6 +121,8 @@ out=$(TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson batt
       obsEpoch: $o.timestamp,
       units: $u,
       temp: ($o.air_temperature | temp),
+      sensorTemp: ($o.air_temperature | temp),
+      sensorHumidity: $o.relative_humidity,
       feels: ($o.feels_like | temp),
       dewpt: ($o.dew_point | temp),
       humidity: $o.relative_humidity,
@@ -138,53 +147,79 @@ out=$(TZ=$tz jq -ce --arg u "$units" --argjson dev "$device_body" --argjson batt
       timezone: .timezone
     }' <<<"$station_body" 2>/dev/null) || out=
 
+# Tempest's current_conditions (from better_forecast) are what the Tempest
+# app and tempestwx.com show for the station. They fetch at most once here.
+forecast_body=
+forecast() {
+  [[ -n $forecast_body ]] && return 0
+  request "better_forecast?station_id=${station}&$(units_query "$units")"
+  [[ $status == 200 ]] || return 1
+  forecast_body=$body
+}
+
+# A recent reading shows Tempest's corrected values for the readings it
+# corrects (temperature, feels-like, dew point, humidity), as long as they
+# are from within the stale window too. The raw sensor reading stays in
+# sensorTemp and sensorHumidity. Anything missing keeps the sensor's value.
+if [[ $source == tempest && -n $out ]] && ! jq -e '.stale' <<<"$out" >/dev/null 2>&1 && forecast; then
+  # shellcheck disable=SC2016
+  corrected=$(jq -ce --argjson base "$out" --argjson now "${TEMPEST_NOW:-$(date +%s)}" --argjson stale "$stale_after" '
+    def r($d): (. * pow(10; $d) | round) / pow(10; $d);
+    .current_conditions as $c
+    | if ($c.air_temperature | type) != "number" or (($c.time | type) == "number" and ($now - $c.time) > $stale)
+      then error("no current conditions") else . end
+    | $base + ({
+        temp: ($c.air_temperature | r(1)),
+        feels: (if ($c.feels_like | type) == "number" then $c.feels_like | r(1) else null end),
+        dewpt: (if ($c.dew_point | type) == "number" then $c.dew_point | r(1) else null end),
+        humidity: $c.relative_humidity
+      } | with_entries(select(.value != null)))' <<<"$forecast_body" 2>/dev/null) && out=$corrected
+fi
+
 # With no current reading, show the conditions Tempest itself shows on the
 # station page (better_forecast's current_conditions, which it fills in from
 # its model while the station is quiet). It is marked estimated and stays
 # stale, so the bar is still dimmed; obsTime keeps the last real report, and
 # anything the conditions leave out (like today's rain) keeps its last value.
 # Real readings take over again as soon as the station reports.
-if [[ -z $out ]] || jq -e '.stale' <<<"$out" >/dev/null 2>&1; then
-  request "better_forecast?station_id=${station}&$(units_query "$units")"
-  if [[ $status == 200 ]]; then
-    # shellcheck disable=SC2016
-    estimate=$(TZ=$tz jq -ce --arg u "$units" --argjson base "${out:-null}" --argjson station "$station_body" '
-      def r($d): if . == null then null else (. * pow(10; $d) | round) / pow(10; $d) end;
-      .current_conditions as $c
-      | if ($c.air_temperature | type) != "number" then error("no conditions") else . end
-      | ($base // {
-          ok: true,
-          station: ($station.station_id | tostring),
-          neighborhood: ($station.public_name // $station.station_name),
-          obsTime: null,
-          obsEpoch: null,
-          units: $u,
-          precipRate: null,
-          lightningLastHour: null,
-          lightningLast3Hours: null,
-          battery: null,
-          batteryLow: null,
-          lat: $station.latitude,
-          lon: $station.longitude,
-          timezone: $station.timezone
-        }) + ({
-          stale: true,
-          estimated: true,
-          estimateTime: ($c.time | strflocaltime("%Y-%m-%d %H:%M:%S")),
-          temp: ($c.air_temperature | r(1)),
-          feels: ($c.feels_like | r(1)),
-          dewpt: ($c.dew_point | r(1)),
-          humidity: $c.relative_humidity,
-          windSpeed: ($c.wind_avg | r(1)),
-          windGust: ($c.wind_gust | r(1)),
-          winddir: $c.wind_direction,
-          pressure: ($c.sea_level_pressure | if $u == "e" then r(2) else r(1) end),
-          pressureTrend: $c.pressure_trend,
-          precipTotal: ($c.precip_accum_local_day | if $u == "e" then r(2) else r(1) end),
-          uv: $c.uv,
-          solarRadiation: $c.solar_radiation
-        } | with_entries(select(.value != null)))' <<<"$body" 2>/dev/null) && out=$estimate
-  fi
+if { [[ -z $out ]] || jq -e '.stale' <<<"$out" >/dev/null 2>&1; } && forecast; then
+  # shellcheck disable=SC2016
+  estimate=$(TZ=$tz jq -ce --arg u "$units" --argjson base "${out:-null}" --argjson station "$station_body" '
+    def r($d): if . == null then null else (. * pow(10; $d) | round) / pow(10; $d) end;
+    .current_conditions as $c
+    | if ($c.air_temperature | type) != "number" then error("no conditions") else . end
+    | ($base // {
+        ok: true,
+        station: ($station.station_id | tostring),
+        neighborhood: ($station.public_name // $station.station_name),
+        obsTime: null,
+        obsEpoch: null,
+        units: $u,
+        precipRate: null,
+        lightningLastHour: null,
+        lightningLast3Hours: null,
+        battery: null,
+        batteryLow: null,
+        lat: $station.latitude,
+        lon: $station.longitude,
+        timezone: $station.timezone
+      }) + ({
+        stale: true,
+        estimated: true,
+        estimateTime: ($c.time | strflocaltime("%Y-%m-%d %H:%M:%S")),
+        temp: ($c.air_temperature | r(1)),
+        feels: ($c.feels_like | r(1)),
+        dewpt: ($c.dew_point | r(1)),
+        humidity: $c.relative_humidity,
+        windSpeed: ($c.wind_avg | r(1)),
+        windGust: ($c.wind_gust | r(1)),
+        winddir: $c.wind_direction,
+        pressure: ($c.sea_level_pressure | if $u == "e" then r(2) else r(1) end),
+        pressureTrend: $c.pressure_trend,
+        precipTotal: ($c.precip_accum_local_day | if $u == "e" then r(2) else r(1) end),
+        uv: $c.uv,
+        solarRadiation: $c.solar_radiation
+      } | with_entries(select(.value != null)))' <<<"$forecast_body" 2>/dev/null) && out=$estimate
 fi
 
 if [[ -n $out ]]; then

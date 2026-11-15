@@ -773,6 +773,8 @@ Panel {
             { key: "units", label: "Units", value: root.hostWidget ? root.hostWidget.unitsSetting : "auto",
               options: [{ value: "auto", label: "Auto" }, { value: "e", label: "°F mph" },
                         { value: "m", label: "°C km/h" }, { value: "h", label: "°C mph" }] },
+            { key: "reading", label: "Reading", value: root.hostWidget ? root.hostWidget.reading : "tempest",
+              options: [{ value: "tempest", label: "As Tempest shows" }, { value: "sensor", label: "Raw sensor" }] },
             { key: "barValue", label: "Bar shows", value: root.hostWidget ? root.hostWidget.barValue : "temp",
               options: [{ value: "temp", label: "Temperature" }, { value: "feels", label: "Feels like" }] },
             { key: "decimals", label: "Precision", value: String(root.decimals),
