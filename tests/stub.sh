@@ -42,6 +42,16 @@ case "$config" in
     \"air_temperature\":10.0,\"feels_like\":8.0,\"dew_point\":4.0,\"relative_humidity\":66,\"wind_avg\":2.0,\"wind_gust\":5.0,
     \"wind_direction\":225,\"sea_level_pressure\":1016.6,\"pressure_trend\":\"steady\",\"precip\":0.1,\"precip_accum_local_day\":12.7,
     \"uv\":0,\"solar_radiation\":0,\"lightning_strike_count_last_1hr\":0,\"lightning_strike_count_last_3hr\":2}]}" 200 ;;
+  */observations/station/11111\?*) respond "{$(printf "$station" 11111),\"obs\":[{\"timestamp\":1792554000,
+    \"air_temperature\":5.5,\"feels_like\":5.5,\"dew_point\":-1.0,\"relative_humidity\":63,\"wind_avg\":0.1,\"wind_gust\":0.2,
+    \"wind_direction\":143,\"sea_level_pressure\":1029.4,\"pressure_trend\":\"steady\",\"precip_accum_local_day\":0}]}" 200 ;;
+  */observations/station/11112\?*) respond "{$(printf "$station" 11112),\"obs\":[{\"timestamp\":1792554000,\"air_temperature\":5.5,\"relative_humidity\":63}]}" 200 ;;
+  */better_forecast\?station_id=11111\&units_temp=f*) respond '{"timezone":"America/Chicago","status":{"status_code":0},"current_conditions":{"time":1792554060,
+      "air_temperature":28,"feels_like":28,"dew_point":28,"relative_humidity":100,"wind_avg":2,"sea_level_pressure":30.4}}' 200 ;;
+  */better_forecast\?station_id=11111\&units_temp=c*) respond '{"timezone":"America/Chicago","status":{"status_code":0},"current_conditions":{"time":1792554060,
+      "air_temperature":-2.2,"feels_like":-2.2,"dew_point":-2.2,"relative_humidity":100}}' 200 ;;
+  */better_forecast\?station_id=11112\&*) respond '{"timezone":"America/Chicago","status":{"status_code":0},"current_conditions":{"time":1792540000,
+      "air_temperature":28,"relative_humidity":100}}' 200 ;;
   */observations/station/44444\?*) respond "{$(printf "$station" 44444),\"obs\":[]}" 200 ;;
   */observations/station/33333\?*) respond "{$(printf "$station" 33333),\"obs\":[{\"timestamp\":1792550400,\"air_temperature\":18.0,\"feels_like\":18.0,\"precip_accum_local_day\":2.54}]}" 200 ;;
   */better_forecast\?station_id=44444\&*|*/better_forecast\?station_id=33333\&*)

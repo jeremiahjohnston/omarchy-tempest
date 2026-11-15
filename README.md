@@ -90,6 +90,7 @@ and true/false).
 | `stationName` | none | Shown while loading; set by the setup form |
 | `sensorDeviceId` | none | The Tempest sensor's device ID, for the battery; set by the setup form |
 | `units` | `auto` | `auto` (follows your locale), `e` (°F, mph), `m` (°C, km/h), `h` (°C, mph) |
+| `reading` | `tempest` | `tempest` shows the temperature and humidity the Tempest app shows, which Tempest corrects for things like the sun warming the sensor on a calm morning; `sensor` shows the sensor's raw reading. The tooltip shows the raw reading when the two differ |
 | `barValue` | `temp` | `temp` or `feels` (feels-like) |
 | `decimals` | `0` | `0` or `1` |
 | `showUnit` | `false` | `true` shows `64°F` in the bar instead of `64°` |
